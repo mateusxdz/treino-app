@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Treino" />
+  <meta name="theme-color" content="#0f766e" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>Plano de Hipertrofia • Gestão de Treino</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <!-- TELA DE BLOQUEIO OBRIGATÓRIO (LOGIN GATE) -->
+  <div id="authGateScreen" class="auth-gate-screen">
+    <div class="auth-gate-card">
+      <span class="brand-badge">ACESSO RESTRITO</span>
+      <h2>Plano de Hipertrofia</h2>
+      <p class="text-muted text-sm" style="margin-bottom: 18px;">
+        Entre com sua conta para acessar seus treinos, histórico de cargas e evolução corporal.
+      </p>
+      <form id="gateAuthForm" onsubmit="handleGateAuthSubmit(event)">
+        <div class="form-group" style="text-align:left;">
+          <label for="gateEmailInput">E-mail</label>
+          <input type="email" id="gateEmailInput" class="input-control" required autocomplete="email" placeholder="seu@email.com" />
+        </div>
+        <div class="form-group" style="text-align:left;">
+          <label for="gatePasswordInput">Senha</label>
+          <input type="password" id="gatePasswordInput" class="input-control" required minlength="6" autocomplete="current-password" placeholder="••••••••" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnGateSignIn" style="margin-top: 6px; padding: 11px;">
+          Entrar na Minha Conta
+        </button>
+      </form>
+      <p id="gateStatusMsg" class="text-muted text-sm" style="margin-top: 12px;">Verificando sessão...</p>
+    </div>
+  </div>
+
+  <!-- CONTEÚDO PRIVADO DO APLICATIVO (SÓ EXIBIDO APÓS LOGIN) -->
+  <div id="privateAppContent" style="display: none;">
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <span class="brand-badge">PLANO DE TREINO</span>
+        <h1>Hipertrofia & Evolução</h1>
+      </div>
+      <div class="topbar-right">
+        <button id="cloudStatusBtn" class="cloud-pill" onclick="openCloudModal()" title="Conta & Sincronização na Nuvem">
+          <span class="cloud-dot" id="cloudDot"></span>
+          <span id="cloudStatusText">Entrar</span>
+        </button>
+        <div class="header-progress-pill" id="headerProgressPill">0/0 concluídos</div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="main-nav">
+    <div class="container nav-tabs">
+      <button class="nav-tab active" data-tab="treino" onclick="switchMainTab('treino')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5 17.5 17.5"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/><path d="m2 6 4-4"/><path d="m18 22 4-4"/></svg>
+        <span>Treino</span>
+      </button>
+      <button class="nav-tab" data-tab="progressao" onclick="switchMainTab('progressao')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        <span>Cargas</span>
+      </button>
+      <button class="nav-tab" data-tab="peso" onclick="switchMainTab('peso')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 3"/></svg>
+        <span>Peso</span>
+      </button>
+      <button class="nav-tab" data-tab="guia" onclick="switchMainTab('guia')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+        <span>Guia</span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="container main-content">
+    <!-- TAB 1: TREINO DO DIA -->
+    <section id="tab-treino" class="tab-panel active">
+      <div class="week-selector" id="weekSelector"></div>
+
+      <!-- CRONÔMETRO COMPACTO E PRÁTICO PARA MOBILE -->
+      <div class="card timer-compact-card">
+        <div class="timer-compact-top">
+          <div class="timer-compact-left">
+            <span class="timer-label">Descanso</span>
+            <div class="timer-time" id="timerDisplay">01:30</div>
+            <span class="timer-status" id="timerStatusBadge">Pronto</span>
+          </div>
+          <div class="timer-compact-actions">
+            <button class="btn-step" onclick="adjustTimerSeconds(-15)">-15s</button>
+            <button class="btn btn-primary timer-main-btn" id="timerStartPauseBtn" onclick="toggleTimer()">Iniciar</button>
+            <button class="btn btn-outline btn-reset" onclick="resetTimer()">Zerar</button>
+            <button class="btn-step" onclick="adjustTimerSeconds(15)">+15s</button>
+          </div>
+        </div>
+        <div class="timer-presets">
+          <button class="preset-btn" onclick="setTimerPreset(60)">1:00</button>
+          <button class="preset-btn active" onclick="setTimerPreset(90)">1:30</button>
+          <button class="preset-btn" onclick="setTimerPreset(120)">2:00</button>
+          <button class="preset-btn" onclick="setTimerPreset(180)">3:00</button>
+        </div>
+        <div class="timer-footer-row">
+          <button id="btnNotifyToggle" class="btn-notify" onclick="enableNotifications()">
+            🔔 Ativar Alerta / Notificação no Celular
+          </button>
+          <span id="wakeLockBadge" class="wakelock-info">Contagem real ativa (mesmo com tela bloqueada)</span>
+        </div>
+      </div>
+
+      <div class="card day-header-card" id="dayHeaderCard"></div>
+
+      <div id="exercisesContainer" class="exercises-list"></div>
+    </section>
+
+    <!-- TAB 2: PROGRESSÃO DE CARGAS -->
+    <section id="tab-progressao" class="tab-panel">
+      <div class="section-header">
+        <div>
+          <h2>Histórico de Cargas</h2>
+          <p class="text-muted text-sm">Acompanhe sua evolução de peso levantado em cada exercício ao longo das semanas.</p>
+        </div>
+        <div class="filter-group">
+          <label for="progressionExerciseSelect">Exercício:</label>
+          <select id="progressionExerciseSelect" class="input-select" onchange="renderProgressionTab()"></select>
+        </div>
+      </div>
+
+      <div class="progression-grid">
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h3 id="progChartTitle">Evolução de Carga (kg)</h3>
+              <p class="text-muted text-sm">Histórico registrado</p>
+            </div>
+            <div class="prog-stats" id="progStatsRow"></div>
+          </div>
+          <div class="chart-container" id="progressionChartContainer"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3>Registros Salvos</h3>
+            <span class="badge-Rule">Progressão Dupla</span>
+          </div>
+          <div id="progressionHistoryTableWrap" class="table-responsive"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: PESO CORPORAL -->
+    <section id="tab-peso" class="tab-panel">
+      <div class="section-header">
+        <div>
+          <h2>Peso Corporal Diário</h2>
+          <p class="text-muted text-sm">Pese-se pela manhã em jejum e acompanhe a média móvel de 7 dias.</p>
+        </div>
+      </div>
+
+      <div class="weight-grid">
+        <div class="card weight-form-card">
+          <h3>Registrar Peso</h3>
+          <form id="weightForm" class="weight-inline-form" onsubmit="handleWeightSubmit(event)">
+            <div class="form-group">
+              <label for="weightDateInput">Data</label>
+              <input type="date" id="weightDateInput" class="input-control" required />
+            </div>
+            <div class="form-group">
+              <label for="weightValueInput">Peso (kg)</label>
+              <input type="number" id="weightValueInput" class="input-control" step="0.1" min="20" max="300" inputmode="decimal" placeholder="Ex: 74.5" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Salvar Peso</button>
+          </form>
+
+          <div class="weight-kpis" id="weightKpis"></div>
+        </div>
+
+        <div class="weight-charts-col">
+          <div class="card">
+            <div class="card-header-flex">
+              <div>
+                <h3>Curva de Peso & Média (7 dias)</h3>
+                <p class="text-muted text-sm">Linha tracejada = tendência semanal real</p>
+              </div>
+            </div>
+            <div class="chart-container" id="weightChartContainer"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header-flex">
+              <h3>Histórico de Pesagens</h3>
+            </div>
+            <div id="weightHistoryTableWrap" class="table-responsive"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: DIRETRIZES DO PDF -->
+    <section id="tab-guia" class="tab-panel">
+      <div class="section-header">
+        <div>
+          <h2>Diretrizes & Regras do Treino</h2>
+          <p class="text-muted text-sm">Resumo rápido das orientações técnicas do seu programa.</p>
+        </div>
+      </div>
+
+      <div class="guide-grid">
+        <div class="card">
+          <h3>1. Aquecimento</h3>
+          <ul class="guide-list">
+            <li><strong>1. Atividade leve:</strong> 5 min de caminhada ou bicicleta leve.</li>
+            <li><strong>2. Preparação articular:</strong> Movimentos específicos sem fadiga.</li>
+            <li><strong>3. Séries de aquecimento:</strong> 2–3 séries progressivas antes do 1º exercício composto.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>2. Proximidade da Falha (RIR)</h3>
+          <table class="clean-table">
+            <thead>
+              <tr>
+                <th>Período</th>
+                <th>Intensidade</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Semanas 1–2</td><td><strong>3–4 RIR</strong> (reps em reserva)</td></tr>
+              <tr><td>Semanas 3–4</td><td><strong>2–3 RIR</strong></td></tr>
+              <tr><td>Semana 5+</td><td><strong>1–3 RIR</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>3. Intervalos Recomendados</h3>
+          <table class="clean-table">
+            <thead>
+              <tr>
+                <th>Exercícios</th>
+                <th>Descanso</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Supinos, Hack, Leg, Stiff, Remadas e Puxadas</td><td><strong>2–3 min</strong></td></tr>
+              <tr><td>Roscas, Tríceps, Elevação, Panturrilha e Abdômen</td><td><strong>60–120 seg</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>4. Progressão Dupla</h3>
+          <p class="text-sm text-muted">
+            Primeiro aumente as repetições dentro da faixa prescrita (ex: 6–10). Quando alcançar o topo da faixa em todas as séries com boa técnica, aumente ligeiramente a carga (kg).
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: ADICIONAR / EDITAR EXERCÍCIO -->
+  <div id="exerciseModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="exerciseModalTitle">Editar Exercício</h3>
+        <button class="btn-icon" onclick="closeExerciseModal()">✕</button>
+      </div>
+      <form id="exerciseForm" onsubmit="handleExerciseSave(event)">
+        <input type="hidden" id="exModalDayKey" />
+        <input type="hidden" id="exModalId" />
+        <div class="form-group">
+          <label for="exNameInput">Nome do Exercício</label>
+          <input type="text" id="exNameInput" class="input-control" required placeholder="Ex: Supino reto com barra" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="exMuscleInput">Grupo Muscular</label>
+            <input type="text" id="exMuscleInput" class="input-control" required placeholder="Ex: Peitoral" />
+          </div>
+          <div class="form-group">
+            <label for="exRestInput">Descanso (seg)</label>
+            <input type="number" id="exRestInput" class="input-control" required min="30" max="600" step="15" value="120" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="exInitialSetsInput">Séries Iniciais</label>
+            <input type="text" id="exInitialSetsInput" class="input-control" required placeholder="Ex: 2" />
+          </div>
+          <div class="form-group">
+            <label for="exAdaptedSetsInput">Séries Adaptadas</label>
+            <input type="text" id="exAdaptedSetsInput" class="input-control" required placeholder="Ex: 3" />
+          </div>
+          <div class="form-group">
+            <label for="exRepsInput">Repetições</label>
+            <input type="text" id="exRepsInput" class="input-control" required placeholder="Ex: 8–12" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="exYoutubeInput">Link do Vídeo no YouTube</label>
+          <input type="url" id="exYoutubeInput" class="input-control" required placeholder="https://www.youtube.com/..." />
+        </div>
+        <div class="form-group">
+          <label for="exNotesInput">Dica Técnica (opcional)</label>
+          <input type="text" id="exNotesInput" class="input-control" placeholder="Ex: Manter escápulas retraídas" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="closeExerciseModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: EDITAR CABEÇALHO DO DIA -->
+  <div id="dayInfoModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Configurar Dia de Treino</h3>
+        <button class="btn-icon" onclick="closeDayInfoModal()">✕</button>
+      </div>
+      <form id="dayInfoForm" onsubmit="handleDayInfoSave(event)">
+        <input type="hidden" id="dayModalKey" />
+        <div class="form-group">
+          <label for="dayTitleInput">Título do Treino</label>
+          <input type="text" id="dayTitleInput" class="input-control" required />
+        </div>
+        <div class="form-group">
+          <label for="dayObjectiveInput">Objetivo do Dia</label>
+          <textarea id="dayObjectiveInput" class="input-control" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="dayIsRestInput" />
+            Dia de Descanso
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="closeDayInfoModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: AUTENTICAÇÃO SUPABASE (LOGIN SEGURO) -->
+  <div id="cloudModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="authModalTitle">Acesso Seguro (Nuvem)</h3>
+        <button class="btn-icon" onclick="closeCloudModal()">✕</button>
+      </div>
+
+      <!-- VISÃO QUANDO DESLOGADO -->
+      <div id="authLoggedOutView">
+        <p class="text-muted text-sm" style="margin-bottom: 14px;">
+          Faça login com seu e-mail e senha para sincronizar seus treinos, cargas e peso corporal com proteção privada no banco de dados (Row Level Security).
+        </p>
+        <form id="authForm" onsubmit="handleAuthSubmit(event)">
+          <div class="form-group">
+            <label for="authEmailInput">E-mail</label>
+            <input type="email" id="authEmailInput" class="input-control" required autocomplete="email" placeholder="seu@email.com" />
+          </div>
+          <div class="form-group">
+            <label for="authPasswordInput">Senha (mín. 6 caracteres)</label>
+            <input type="password" id="authPasswordInput" class="input-control" required minlength="6" autocomplete="current-password" placeholder="••••••••" />
+          </div>
+          <div class="modal-actions" style="justify-content: space-between; flex-wrap: wrap;">
+            <button type="button" class="btn btn-outline" id="btnSignUp" onclick="handleSignUpClick()">Criar Conta</button>
+            <button type="submit" class="btn btn-primary" id="btnSignIn">Entrar</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- VISÃO QUANDO LOGADO -->
+      <div id="authLoggedInView" style="display: none;">
+        <div class="stat-box" style="margin-bottom: 14px;">
+          <div class="stat-label">Conectado como</div>
+          <div class="stat-value" id="authUserEmailDisplay" style="font-size: 14.5px; word-break: break-all;">—</div>
+        </div>
+        <p class="text-muted text-sm" style="margin-bottom: 16px;">
+          Sua sessão fica salva automaticamente neste aparelho. Apenas a sua conta tem permissão para ler e gravar seus dados no Supabase.
+        </p>
+        <div class="modal-actions" style="justify-content: space-between; flex-wrap: wrap;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="forcePullFromCloud()">⬇ Baixar da Nuvem</button>
+          <div style="display:flex; gap: 8px;">
+            <button type="button" class="btn btn-outline" onclick="handleSignOut()">Sair da Conta</button>
+            <button type="button" class="btn btn-primary" onclick="closeCloudModal()">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- FIM #privateAppContent -->
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
